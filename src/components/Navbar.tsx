@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   FiMenu,
   FiBell,
@@ -7,11 +7,11 @@ import {
   FiUser,
   FiSettings,
   FiLogOut,
-  FiShield,
-  FiMail,
 } from "react-icons/fi";
-import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import toast from "react-hot-toast";
+import { authApi } from "../features/auth/api/authApi";
 
 interface NavbarProps {
   sidebarOpen: boolean;
@@ -19,8 +19,11 @@ interface NavbarProps {
 }
 
 const Navbar: React.FC<NavbarProps> = ({ sidebarOpen, setSidebarOpen }) => {
-  const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  console.log(user);
+
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -57,9 +60,19 @@ const Navbar: React.FC<NavbarProps> = ({ sidebarOpen, setSidebarOpen }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setIsProfileOpen(false);
+
+    try {
+      const response = await authApi.logout();
+      toast.success(response.message || "Logged out successfully! dfsgg");
+    } catch (error: any) {
+      // Ignore error, still logout locally
+    }
+
+    // Always clear local state and redirect
     logout();
+    navigate("/login");
   };
 
   const handleProfile = () => {
@@ -81,7 +94,7 @@ const Navbar: React.FC<NavbarProps> = ({ sidebarOpen, setSidebarOpen }) => {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
-    <header className="sticky top-0 z-30  backdrop-blur-md border-b border-gray-200">
+    <header className="sticky top-0 z-30 ">
       <div className="flex items-center justify-between px-4 md:px-6 py-3">
         {/* Left side - menu button & search */}
         <div className="flex items-center gap-4">

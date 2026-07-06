@@ -1,198 +1,126 @@
-import React, { useState } from "react";
-import {
-  FiMail,
-  FiLock,
-  FiEye,
-  FiEyeOff,
-  FiLogIn,
-  FiAlertCircle,
-  FiUser,
-} from "react-icons/fi";
+import { useState, type FormEvent } from "react";
+import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { toast, Toaster } from "react-hot-toast";
-import { useAuth } from "../../context/AuthContext"; // ← IMPORT AUTH CONTEXT
+import { toast } from "react-hot-toast";
+import { FiMail, FiLock, FiEye, FiEyeOff, FiShield } from "react-icons/fi";
 
-const Login = () => {
-  const navigate = useNavigate();
-  const { login, isLoading: authLoading } = useAuth(); // ← USE AUTH HOOK
+export default function Login() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  });
-  const [errors, setErrors] = useState({
-    email: "",
-    password: "",
-  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { login } = useAuth();
+  const navigate = useNavigate();
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    if (errors[name as keyof typeof errors]) {
-      setErrors((prev) => ({ ...prev, [name]: "" }));
-    }
-  };
-
-  const validateForm = (): boolean => {
-    let isValid = true;
-    const newErrors = { email: "", password: "" };
-
-    if (!formData.email) {
-      newErrors.email = "Email is required";
-      isValid = false;
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = "Please enter a valid email address";
-      isValid = false;
-    }
-
-    if (!formData.password) {
-      newErrors.password = "Password is required";
-      isValid = false;
-    }
-
-    setErrors(newErrors);
-    return isValid;
-  };
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-
-    if (!validateForm()) {
-      return;
-    }
-
-    setIsLoading(true);
+    setIsSubmitting(true);
 
     try {
-      // ✅ USE THE AUTH CONTEXT LOGIN FUNCTION
-      await login(formData.email, formData.password);
-      // AuthContext handles: token storage, user fetch, and navigation
-      
-    } catch (error) {
-      console.error("Login error:", error);
-      // Error already handled by AuthContext
+      const response = await login({ email, password });
+      toast.success(response.message || "Login successful!");
+      navigate("/");
+    } catch (err: any) {
+      const message = err.response?.data?.message;
+      toast.error(message);
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          duration: 4000,
-          style: { background: "#363636", color: "#fff" },
-          success: {
-            duration: 3000,
-            iconTheme: { primary: "#10B981", secondary: "#fff" },
-          },
-          error: {
-            duration: 4000,
-            iconTheme: { primary: "#EF4444", secondary: "#fff" },
-          },
-        }}
-      />
-
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 p-4">
       <div className="w-full max-w-md">
-        <div className="liquid-glass rounded-2xl p-8 shadow-xl">
+        {/* Card - White Background */}
+        <div className="bg-white rounded-3xl shadow-2xl p-8">
+          {/* Logo / Header */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 shadow-lg shadow-blue-500/30 mb-4">
-              <FiUser size={40} className="text-white" />
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl mb-5 shadow-lg shadow-blue-500/30">
+              <FiShield className="w-10 h-10 text-white" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">
-              Welcome Back
-            </h1>
-            <p className="text-gray-600">Sign in to your account to continue</p>
+            <h1 className="text-3xl font-bold text-gray-800">Welcome Back</h1>
+            <p className="text-gray-500 mt-2">
+              Sign in to your admin dashboard
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Email Field */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Email Address
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiMail className="text-gray-400" size={18} />
-                </div>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                  <FiMail className="w-5 h-5" />
+                </span>
                 <input
                   type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className={`w-full pl-10 pr-4 py-2.5 bg-white/50 border ${
-                    errors.email ? "border-red-500" : "border-gray-300"
-                  } rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 placeholder-gray-400`}
-                  placeholder="company@example.com"
-                  disabled={isLoading || authLoading}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  required
+                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white transition-all text-gray-700 placeholder-gray-400"
                 />
               </div>
-              {errors.email && (
-                <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
-                  <FiAlertCircle size={12} />
-                  {errors.email}
-                </p>
-              )}
             </div>
 
+            {/* Password Field */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Password
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiLock className="text-gray-400" size={18} />
-                </div>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                  <FiLock className="w-5 h-5" />
+                </span>
                 <input
                   type={showPassword ? "text" : "password"}
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  className={`w-full pl-10 pr-12 py-2.5 bg-white/50 border ${
-                    errors.password ? "border-red-500" : "border-gray-300"
-                  } rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 placeholder-gray-400`}
-                  placeholder="••••••••"
-                  disabled={isLoading || authLoading}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  required
+                  className="w-full pl-12 pr-12 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white transition-all text-gray-700 placeholder-gray-400"
                 />
+                {/* Eye Toggle Button */}
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
                 >
-                  {showPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                  {showPassword ? (
+                    <FiEyeOff className="w-5 h-5" />
+                  ) : (
+                    <FiEye className="w-5 h-5" />
+                  )}
                 </button>
               </div>
-              {errors.password && (
-                <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
-                  <FiAlertCircle size={12} />
-                  {errors.password}
-                </p>
-              )}
             </div>
 
+            {/* Submit Button */}
             <button
               type="submit"
-              disabled={isLoading || authLoading}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isSubmitting}
+              className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-xl transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30"
             >
-              {isLoading || authLoading ? (
+              {isSubmitting ? (
                 <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Logging in...
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Signing in...</span>
                 </>
               ) : (
-                <>
-                  <FiLogIn size={18} />
-                  Sign In
-                </>
+                "Sign In"
               )}
             </button>
           </form>
         </div>
+
+        {/* Footer */}
+        <p className="text-center text-sm text-white/80 mt-6">
+          © 2026 Twipra Technologies. All rights reserved.
+        </p>
       </div>
     </div>
   );
-};
-
-export default Login;
+}

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   FiArrowUp,
@@ -13,60 +13,15 @@ import {
 } from "react-icons/fi";
 import Table from "../../components/Table";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
-import axiosInstance from "../../services/axios";
-
-// Update the interface to match your API response
-interface Application {
-  id: string;
-  fullName: string;
-  email: string;
-  phoneNumber: string;
-  position: string;
-  yearsOfExperience: string;
-  portfolioUrl: string | null;
-  linkedInProfile: string | null;
-  githubProfile: string | null;
-  resumeUrl: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import { useApplications } from "../../features/applications/hooks/applicationHook";
+import type { Application } from "../../features/applications/types/application.types";
 
 const ApplicationTable = () => {
   const navigate = useNavigate();
-  const [applications, setApplications] = useState<Application[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Fetch applications from API
-  useEffect(() => {
-    fetchApplications();
-  }, []);
-
-  const fetchApplications = async () => {
-    try {
-      setLoading(true);
-      const response = await axiosInstance.get("/application");
-
-      if (response.data.success) {
-        setApplications(response.data.data);
-      } else {
-        setError("Failed to fetch applications");
-      }
-    } catch (err: any) {
-      console.error("Error fetching applications:", err);
-      setError(
-        err.response?.data?.message ||
-          "Failed to fetch applications. Please check if backend is running.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: applications = [], isLoading, isError, error, refetch } = useApplications();
 
   // Handle row click - receives the entire application object
   const handleRowClick = (application: Application) => {
-    // ✅ Fix: Accept Application object, not string
     navigate(`/application/${application.id}`);
   };
 
@@ -214,7 +169,7 @@ const ApplicationTable = () => {
     [],
   );
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96">
         <FiLoader className="animate-spin text-blue-600" size={40} />
@@ -223,13 +178,15 @@ const ApplicationTable = () => {
     );
   }
 
-  if (error) {
+  if (isError) {
     return (
       <div className="flex flex-col items-center justify-center h-96">
         <FiAlertCircle className="text-red-500" size={40} />
-        <p className="mt-4 text-red-600">{error}</p>
+        <p className="mt-4 text-red-600">
+          {(error as any)?.message || "Failed to fetch applications"}
+        </p>
         <button
-          onClick={fetchApplications}
+          onClick={() => refetch()}
           className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           Try Again

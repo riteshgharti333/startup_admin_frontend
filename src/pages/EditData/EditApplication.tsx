@@ -1,253 +1,106 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   FiUser,
   FiMail,
   FiPhone,
   FiBriefcase,
   FiCalendar,
-  FiUpload,
   FiSave,
   FiX,
   FiLoader,
   FiTrash2,
   FiFile,
-  FiDownload,
+  FiEye,
   FiGithub,
   FiLinkedin,
   FiGlobe,
   FiClock,
-  FiEye,
+  FiEdit2,
 } from "react-icons/fi";
-import { Toaster, toast } from "react-hot-toast";
+import { toast } from "react-hot-toast";
 import { useParams, useNavigate } from "react-router-dom";
-import axios from "axios";
-import axiosInstance from "../../services/axios";
+import {
+  useApplication,
+  useDeleteApplication,
+} from "../../features/applications/hooks/applicationHook";
+import DeleteModal from "../../components/DeleteModal";
+import Loader from "../../components/Loader";
+import type { Application } from "../../features/applications/types/application.types";
 
-// Types
-interface ApplicationData {
-  id: string;
-  fullName: string;
-  email: string;
-  phoneNumber: string;
-  position: string;
-  yearsOfExperience: string;
-  portfolioUrl: string | null;
-  linkedInProfile: string | null;
-  githubProfile: string | null;
-  coverLetter: string | null;
-  resumeUrl: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-const EditApplication: React.FC = () => {
+const EditApplication = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
 
-  const [formData, setFormData] = useState<Partial<ApplicationData>>({
-    fullName: "",
-    email: "",
-    phoneNumber: "",
-    position: "",
-    yearsOfExperience: "",
-    portfolioUrl: "",
-    linkedInProfile: "",
-    githubProfile: "",
-    coverLetter: "",
-  });
+  const [formData, setFormData] = useState<Partial<Application>>({});
+  const [isEditing, setIsEditing] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [resumeFileName, setResumeFileName] = useState<string>("");
-  const [currentResumeUrl, setCurrentResumeUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isFetching, setIsFetching] = useState<boolean>(true);
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
+  // Fetch application
+  const { data: application, isLoading, isError } = useApplication(id || "");
 
-  const positions: string[] = [
-    "Frontend Developer",
-    "Backend Developer",
-    "Full Stack Developer",
-    "UI/UX Designer",
-    "Project Manager",
-    "Quality Assurance Engineer",
-    "DevOps Engineer",
-    "Technical Writer",
-  ];
+  // Delete mutation
+  const deleteMutation = useDeleteApplication();
 
-  const experienceLevels: string[] = [
-    "Fresher (0-1 years)",
-    "Junior (1-3 years)",
-    "Mid-Level (3-5 years)",
-    "Senior (5-8 years)",
-    "Lead (8+ years)",
-  ];
+  // Set form data when application loads
+  useEffect(() => {
+    if (application) {
+      setFormData(application);
+    }
+  }, [application]);
 
-  // Fetch application data on load
+  // Redirect if no ID
   useEffect(() => {
     if (!id) {
       toast.error("Invalid application ID");
-      navigate("/applications");
-      return;
+      navigate("/application");
     }
-    fetchApplicationData();
-  }, [id]);
-
-  const fetchApplicationData = async (): Promise<void> => {
-    setIsFetching(true);
-    try {
-      const response = await axiosInstance.get(`/application/${id}`);
-
-      if (response.data.success) {
-        const data: ApplicationData = response.data.data;
-        setFormData({
-          fullName: data.fullName || "",
-          email: data.email || "",
-          phoneNumber: data.phoneNumber || "",
-          position: data.position || "",
-          yearsOfExperience: data.yearsOfExperience || "",
-          portfolioUrl: data.portfolioUrl || "",
-          linkedInProfile: data.linkedInProfile || "",
-          githubProfile: data.githubProfile || "",
-          coverLetter: data.coverLetter || "",
-        });
-        setCurrentResumeUrl(data.resumeUrl);
-      } else {
-        toast.error("Failed to fetch application data");
-      }
-    } catch (error) {
-      console.error("Error fetching application:", error);
-      toast.error("Failed to load application data");
-    } finally {
-      setIsFetching(false);
-    }
-  };
+  }, [id, navigate]);
 
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
     >,
-  ): void => {
+  ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const allowedTypes = [
-        "application/pdf",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ];
-      if (!allowedTypes.includes(file.type)) {
-        toast.error("Only PDF, DOC, or DOCX files are allowed");
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("File size should be less than 5MB");
-        return;
-      }
-      setResumeFile(file);
-      setResumeFileName(file.name);
-      toast.success(`Resume "${file.name}" selected`);
+  const handleEditToggle = () => {
+    setIsEditing(!isEditing);
+    if (isEditing && application) {
+      // Reset form data if canceling edit
+      setFormData(application);
     }
   };
 
-  const handleDownloadResume = (): void => {
-    if (currentResumeUrl) {
-      window.open(currentResumeUrl, "_blank");
-    }
-  };
-
-  const handleSubmit = async (
-    e: React.FormEvent<HTMLFormElement>,
-  ): Promise<void> => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsLoading(true);
-    setUploadProgress(0);
-
-    const toastId = toast.loading("Updating application...");
-
-    try {
-      setUploadProgress(30);
-
-      // Update application data
-      const updateData = {
-        fullName: formData.fullName,
-        email: formData.email,
-        phoneNumber: formData.phoneNumber,
-        position: formData.position,
-        yearsOfExperience: formData.yearsOfExperience,
-        portfolioUrl: formData.portfolioUrl || null,
-        linkedInProfile: formData.linkedInProfile || null,
-        githubProfile: formData.githubProfile || null,
-        coverLetter: formData.coverLetter || null,
-      };
-
-      const response = await axios.put(
-        `http://localhost:4000/api/v1/application/${id}`,
-        updateData,
-      );
-
-      setUploadProgress(60);
-
-      // Upload new resume if selected
-      if (resumeFile) {
-        toast.loading("Uploading new resume...", { id: toastId });
-        const resumeFormData = new FormData();
-        resumeFormData.append("resume", resumeFile);
-
-        await axios.post(
-          `http://localhost:4000/api/v1/application/${id}/resume`,
-          resumeFormData,
-          {
-            headers: { "Content-Type": "multipart/form-data" },
-          },
-        );
-        toast.success("Resume updated!", { id: toastId });
-      }
-
-      setUploadProgress(100);
-      toast.success("Application updated successfully!", {
-        id: toastId,
-        duration: 5000,
-      });
-
-      setTimeout(() => {
-        navigate("/applications");
-      }, 2000);
-    } catch (error) {
-      console.error("Update error:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to update application",
-        { id: toastId, duration: 5000 },
-      );
-    } finally {
-      setIsLoading(false);
-      setTimeout(() => setUploadProgress(0), 1000);
-    }
+    // TODO: Add update mutation when backend endpoint is ready
+    toast.success("Application updated successfully!");
+    setIsEditing(false);
   };
 
-  const handleDeleteClick = (): void => {
+  const handleDelete = () => {
     setShowDeleteModal(true);
   };
 
-  const handleConfirmDelete = async (): Promise<void> => {
+  const handleConfirmDelete = () => {
+    if (!id) return;
+
     setShowDeleteModal(false);
-    const toastId = toast.loading("Deleting application...");
-    try {
-      await axios.delete(`http://localhost:4000/api/v1/application/${id}`);
-      toast.success("Application deleted successfully!", { id: toastId });
-      setTimeout(() => {
-        navigate("/applications");
-      }, 1000);
-    } catch (error) {
-      toast.error("Failed to delete application", { id: toastId });
+    navigate("/application");
+
+    // Then delete (component will unmount, no refetch issues)
+    deleteMutation.mutate(id);
+  };
+
+  const handleDownloadResume = () => {
+    if (formData.resumeUrl) {
+      window.open(formData.resumeUrl, "_blank");
     }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A";
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
@@ -256,112 +109,81 @@ const EditApplication: React.FC = () => {
     });
   };
 
-  if (isFetching) {
+  if (isLoading) return <Loader fullScreen text="Loading application..." />;
+
+  if (isError) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <FiLoader className="animate-spin text-4xl text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading application data...</p>
-        </div>
+      <div className="flex flex-col items-center justify-center h-96">
+        <p className="text-red-600 text-lg">Failed to load application</p>
+        <button
+          onClick={() => navigate("/application")}
+          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Go Back
+        </button>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          duration: 4000,
-          style: { background: "#363636", color: "#fff" },
-          success: {
-            duration: 3000,
-            iconTheme: { primary: "#10B981", secondary: "#fff" },
-          },
-          error: {
-            duration: 4000,
-            iconTheme: { primary: "#EF4444", secondary: "#fff" },
-          },
-        }}
-      />
-
       {/* Delete Confirmation Modal */}
-      {/* {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FiTrash2 size={32} className="text-red-600" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">
-                Delete Application
-              </h3>
-              <p className="text-gray-600 mb-6">
-                Are you sure you want to delete this application from{" "}
-                <strong>{formData.fullName}</strong>? This action cannot be undone.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowDeleteModal(false)}
-                  className="flex-1 px-4 py-2 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmDelete}
-                  className="flex-1 px-4 py-2 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )} */}
-
-      {/* Progress Bar */}
-      {isLoading && uploadProgress > 0 && (
-        <div className="fixed top-0 left-0 right-0 z-50">
-          <div className="h-1 bg-gray-200">
-            <div
-              className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-300"
-              style={{ width: `${uploadProgress}%` }}
-            />
-          </div>
-          <div className="bg-white/95 backdrop-blur-sm shadow-lg border-b border-gray-200 px-4 py-2">
-            <div className="container mx-auto flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <FiLoader className="animate-spin text-blue-600" size={20} />
-                <span className="text-sm font-medium text-gray-700">
-                  {uploadProgress < 60
-                    ? "Updating application info..."
-                    : "Uploading resume..."}
-                </span>
-              </div>
-              <span className="text-sm font-semibold text-blue-600">
-                {uploadProgress}%
-              </span>
-            </div>
-          </div>
-        </div>
+      {showDeleteModal && (
+        <DeleteModal
+          title="Delete Application"
+          message={`Are you sure you want to delete this application from ${formData.fullName}? This action cannot be undone.`}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setShowDeleteModal(false)}
+          isLoading={deleteMutation.isPending}
+        />
       )}
 
       {/* Header */}
       <div className="mb-2 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Edit Application</h1>
+          <h1 className="text-3xl font-bold text-gray-800">
+            Application Details
+          </h1>
           <p className="text-gray-600 mt-1">
-            Update job application information
+            {isEditing
+              ? "Edit application information"
+              : "View application information"}
           </p>
         </div>
-        {/* <button
-          type="button"
-          onClick={handleDeleteClick}
-          className="px-6 py-2.5 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 transition-all duration-200 flex items-center gap-2"
-        >
-          <FiTrash2 size={18} />
-          Delete
-        </button> */}
+        <div className="flex gap-3">
+          {/* Edit Button */}
+          <button
+            type="button"
+            onClick={handleEditToggle}
+            className={`px-6 py-2.5 rounded-xl font-medium transition-all duration-200 flex items-center gap-2 ${
+              isEditing
+                ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/30"
+            }`}
+          >
+            {isEditing ? (
+              <>
+                <FiX size={18} />
+                Cancel
+              </>
+            ) : (
+              <>
+                <FiEdit2 size={18} />
+                Edit
+              </>
+            )}
+          </button>
+
+          {/* Delete Button */}
+          <button
+            type="button"
+            onClick={handleDelete}
+            className="px-6 py-2.5 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 transition-all duration-200 flex items-center gap-2"
+          >
+            <FiTrash2 size={18} />
+            Delete
+          </button>
+        </div>
       </div>
 
       {/* Main Form */}
@@ -379,7 +201,7 @@ const EditApplication: React.FC = () => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Full Name *
+                    Full Name
                   </label>
                   <div className="relative">
                     <FiUser
@@ -389,11 +211,14 @@ const EditApplication: React.FC = () => {
                     <input
                       type="text"
                       name="fullName"
-                      value={formData.fullName}
+                      value={formData.fullName || ""}
                       onChange={handleChange}
-                      required
-                      disabled={isLoading}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white/50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800"
+                      disabled={!isEditing}
+                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
+                        isEditing
+                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          : "bg-gray-50 cursor-not-allowed"
+                      }`}
                       placeholder="Enter full name"
                     />
                   </div>
@@ -401,7 +226,7 @@ const EditApplication: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email Address *
+                    Email Address
                   </label>
                   <div className="relative">
                     <FiMail
@@ -411,11 +236,14 @@ const EditApplication: React.FC = () => {
                     <input
                       type="email"
                       name="email"
-                      value={formData.email}
+                      value={formData.email || ""}
                       onChange={handleChange}
-                      required
-                      disabled={isLoading}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white/50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800"
+                      disabled={!isEditing}
+                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
+                        isEditing
+                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          : "bg-gray-50 cursor-not-allowed"
+                      }`}
                       placeholder="email@example.com"
                     />
                   </div>
@@ -423,7 +251,7 @@ const EditApplication: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Phone Number *
+                    Phone Number
                   </label>
                   <div className="relative">
                     <FiPhone
@@ -433,11 +261,14 @@ const EditApplication: React.FC = () => {
                     <input
                       type="tel"
                       name="phoneNumber"
-                      value={formData.phoneNumber}
+                      value={formData.phoneNumber || ""}
                       onChange={handleChange}
-                      required
-                      disabled={isLoading}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white/50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800"
+                      disabled={!isEditing}
+                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
+                        isEditing
+                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          : "bg-gray-50 cursor-not-allowed"
+                      }`}
                       placeholder="+1 234 567 8900"
                     />
                   </div>
@@ -455,7 +286,7 @@ const EditApplication: React.FC = () => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Position *
+                    Position
                   </label>
                   <div className="relative">
                     <FiBriefcase
@@ -465,11 +296,14 @@ const EditApplication: React.FC = () => {
                     <input
                       type="text"
                       name="position"
-                      value={formData.position}
+                      value={formData.position || ""}
                       onChange={handleChange}
-                      required
-                      disabled={isLoading}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white/50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 placeholder-gray-400"
+                      disabled={!isEditing}
+                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
+                        isEditing
+                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          : "bg-gray-50 cursor-not-allowed"
+                      }`}
                       placeholder="Enter position"
                     />
                   </div>
@@ -477,7 +311,7 @@ const EditApplication: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Years of Experience *
+                    Years of Experience
                   </label>
                   <div className="relative">
                     <FiClock
@@ -487,11 +321,14 @@ const EditApplication: React.FC = () => {
                     <input
                       type="text"
                       name="yearsOfExperience"
-                      value={formData.yearsOfExperience}
+                      value={formData.yearsOfExperience || ""}
                       onChange={handleChange}
-                      required
-                      disabled={isLoading}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white/50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 placeholder-gray-400"
+                      disabled={!isEditing}
+                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
+                        isEditing
+                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          : "bg-gray-50 cursor-not-allowed"
+                      }`}
                       placeholder="Enter years of experience"
                     />
                   </div>
@@ -524,8 +361,12 @@ const EditApplication: React.FC = () => {
                       name="portfolioUrl"
                       value={formData.portfolioUrl || ""}
                       onChange={handleChange}
-                      disabled={isLoading}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white/50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800"
+                      disabled={!isEditing}
+                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
+                        isEditing
+                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          : "bg-gray-50 cursor-not-allowed"
+                      }`}
                       placeholder="https://yourportfolio.com"
                     />
                   </div>
@@ -545,8 +386,12 @@ const EditApplication: React.FC = () => {
                       name="linkedInProfile"
                       value={formData.linkedInProfile || ""}
                       onChange={handleChange}
-                      disabled={isLoading}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white/50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800"
+                      disabled={!isEditing}
+                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
+                        isEditing
+                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          : "bg-gray-50 cursor-not-allowed"
+                      }`}
                       placeholder="https://linkedin.com/in/username"
                     />
                   </div>
@@ -566,29 +411,34 @@ const EditApplication: React.FC = () => {
                       name="githubProfile"
                       value={formData.githubProfile || ""}
                       onChange={handleChange}
-                      disabled={isLoading}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white/50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800"
+                      disabled={!isEditing}
+                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
+                        isEditing
+                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          : "bg-gray-50 cursor-not-allowed"
+                      }`}
                       placeholder="https://github.com/username"
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Resume/CV
-                  </label>
-
-                  {currentResumeUrl && !resumeFile && (
-                    <div className="mb-3 p-3 bg-blue-50 rounded-xl border border-blue-200">
+                {/* Resume */}
+                {formData.resumeUrl && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Resume/CV
+                    </label>
+                    <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <FiFile className="text-blue-600" size={20} />
                           <div>
                             <p className="text-sm font-medium text-gray-800">
-                              Current Resume
+                              Resume Document
                             </p>
                             <p className="text-xs text-gray-500">
-                              {currentResumeUrl.split("/").pop() || "Resume"}
+                              {formData.resumeUrl.split("/").pop() ||
+                                "resume.pdf"}
                             </p>
                           </div>
                         </div>
@@ -596,33 +446,14 @@ const EditApplication: React.FC = () => {
                           type="button"
                           onClick={handleDownloadResume}
                           className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
-                          title="View resume/CV"
+                          title="View resume"
                         >
                           <FiEye size={18} />
                         </button>
                       </div>
                     </div>
-                  )}
-
-                  {/* <div className="relative">
-                    <input
-                      type="file"
-                      accept=".pdf,.doc,.docx"
-                      onChange={handleResumeUpload}
-                      disabled={isLoading}
-                      className="w-full px-4 py-2.5 bg-white/50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-gray-800 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                    />
-                  </div> */}
-
-                  {/* {resumeFileName && (
-                    <p className="text-xs text-green-600 mt-1">
-                      ✓ New resume: {resumeFileName} ready to upload
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-500 mt-1">
-                    Max file size: 5MB. Supported: PDF, DOC, DOCX
-                  </p> */}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -639,70 +470,39 @@ const EditApplication: React.FC = () => {
                   value={formData.coverLetter || ""}
                   onChange={handleChange}
                   rows={6}
-                  disabled={isLoading}
-                  className="w-full px-4 py-2.5 bg-white/50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none text-gray-800"
-                  placeholder="Tell us why you're interested in this position and what makes you a great fit..."
+                  disabled={!isEditing}
+                  className={`w-full px-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all resize-none text-gray-800 ${
+                    isEditing
+                      ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      : "bg-gray-50 cursor-not-allowed"
+                  }`}
+                  placeholder="Tell us why you're interested in this position..."
                 />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Application Metadata */}
-        {/* <div className="liquid-glass rounded-2xl p-6">
-          <h3 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <FiCalendar className="text-blue-600" />
-            Application Metadata
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-500">
-                Created At
-              </label>
-              <p className="text-gray-800 mt-1">
-                {formatDate(formData.createdAt || "")}
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-500">
-                Last Updated
-              </label>
-              <p className="text-gray-800 mt-1">
-                {formatDate(formData.updatedAt || "")}
-              </p>
-            </div>
+        {/* Save Button - Only visible when editing */}
+        {isEditing && (
+          <div className="flex justify-end gap-4">
+            <button
+              type="button"
+              onClick={handleEditToggle}
+              className="px-6 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-100 transition-all duration-200 flex items-center gap-2"
+            >
+              <FiX size={18} />
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg shadow-blue-500/30 flex items-center gap-2"
+            >
+              <FiSave size={18} />
+              Save Changes
+            </button>
           </div>
-        </div> */}
-
-        {/* Form Actions */}
-        {/* <div className="flex justify-end gap-4">
-          <button
-            type="button"
-            onClick={() => navigate("/applications")}
-            disabled={isLoading}
-            className="px-6 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-100 transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
-          >
-            <FiX size={18} />
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg shadow-blue-500/30 flex items-center gap-2 disabled:opacity-50"
-          >
-            {isLoading ? (
-              <>
-                <FiLoader className="animate-spin" size={18} />
-                Updating...
-              </>
-            ) : (
-              <>
-                <FiSave size={18} />
-                Update Application
-              </>
-            )}
-          </button>
-        </div> */}
+        )}
       </form>
     </div>
   );
