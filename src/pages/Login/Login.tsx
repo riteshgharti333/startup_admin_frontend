@@ -1,39 +1,32 @@
 import { useState, type FormEvent } from "react";
-import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { toast } from "react-hot-toast";
 import { FiMail, FiLock, FiEye, FiEyeOff, FiShield } from "react-icons/fi";
+import { useLogin } from "../../service/hooks/useAuth";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const { login } = useAuth();
   const navigate = useNavigate();
+  const loginMutation = useLogin();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
-    try {
-      const response = await login({ email, password });
-      toast.success(response.message || "Login successful!");
-      navigate("/");
-    } catch (err: any) {
-      const message = err.response?.data?.message;
-      toast.error(message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    loginMutation.mutate(
+      { email, password },
+      {
+        onSuccess: () => {
+          navigate("/");
+        },
+      },
+    );
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 p-4">
       <div className="w-full max-w-md">
-        {/* Card - White Background */}
         <div className="bg-white rounded-3xl shadow-2xl p-8">
-          {/* Logo / Header */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl mb-5 shadow-lg shadow-blue-500/30">
               <FiShield className="w-10 h-10 text-white" />
@@ -44,9 +37,7 @@ export default function Login() {
             </p>
           </div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email Field */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Email Address
@@ -66,7 +57,6 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Password Field */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Password
@@ -83,7 +73,6 @@ export default function Login() {
                   required
                   className="w-full pl-12 pr-12 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white transition-all text-gray-700 placeholder-gray-400"
                 />
-                {/* Eye Toggle Button */}
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
@@ -98,13 +87,12 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Submit Button */}
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={loginMutation.isPending}
               className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-xl transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30"
             >
-              {isSubmitting ? (
+              {loginMutation.isPending ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                   <span>Signing in...</span>
@@ -116,7 +104,6 @@ export default function Login() {
           </form>
         </div>
 
-        {/* Footer */}
         <p className="text-center text-sm text-white/80 mt-6">
           © 2026 Twipra Technologies. All rights reserved.
         </p>

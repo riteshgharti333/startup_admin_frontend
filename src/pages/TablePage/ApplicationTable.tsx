@@ -13,12 +13,18 @@ import {
 } from "react-icons/fi";
 import Table from "../../components/Table";
 import { useNavigate } from "react-router-dom";
-import { useApplications } from "../../features/applications/hooks/applicationHook";
-import type { Application } from "../../features/applications/types/application.types";
+import { useApplications } from "../../service/hooks/useApplication";
+import type { Application } from "../../service/types";
 
 const ApplicationTable = () => {
   const navigate = useNavigate();
-  const { data: applications = [], isLoading, isError, error, refetch } = useApplications();
+  const {
+    data: applications = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useApplications();
 
   // Handle row click - receives the entire application object
   const handleRowClick = (application: Application) => {

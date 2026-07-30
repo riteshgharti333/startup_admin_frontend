@@ -4,7 +4,6 @@ import {
   FiMail,
   FiPhone,
   FiBriefcase,
-  FiCalendar,
   FiSave,
   FiX,
   FiLoader,
@@ -19,13 +18,20 @@ import {
 } from "react-icons/fi";
 import { toast } from "react-hot-toast";
 import { useParams, useNavigate } from "react-router-dom";
+import DeleteModal from "../../components/DeleteModal";
+import Loader from "../../components/Loader";
+import type { Application, UpdateApplicationDto } from "../../service/types";
 import {
   useApplication,
   useDeleteApplication,
-} from "../../features/applications/hooks/applicationHook";
-import DeleteModal from "../../components/DeleteModal";
-import Loader from "../../components/Loader";
-import type { Application } from "../../features/applications/types/application.types";
+  useUpdateApplication,
+} from "../../service/hooks/useApplication";
+import { updateApplicationSchema } from "../../utils/validation";
+import BackButton from "../../components/BackButton";
+
+const updateSchema = updateApplicationSchema.shape.body;
+
+type FormErrors = Partial<Record<string, string>>;
 
 const EditApplication = () => {
   const navigate = useNavigate();
@@ -34,27 +40,40 @@ const EditApplication = () => {
   const [formData, setFormData] = useState<Partial<Application>>({});
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [errors, setErrors] = useState<FormErrors>({});
 
-  // Fetch application
   const { data: application, isLoading, isError } = useApplication(id || "");
-
-  // Delete mutation
+  const updateMutation = useUpdateApplication();
   const deleteMutation = useDeleteApplication();
 
-  // Set form data when application loads
   useEffect(() => {
     if (application) {
       setFormData(application);
     }
   }, [application]);
 
-  // Redirect if no ID
   useEffect(() => {
     if (!id) {
       toast.error("Invalid application ID");
       navigate("/application");
     }
   }, [id, navigate]);
+
+  const validateField = (name: string, value: string) => {
+    const fieldSchema =
+      updateSchema.shape[name as keyof typeof updateSchema.shape];
+    if (!fieldSchema) return;
+
+    const result = fieldSchema.safeParse(value || undefined);
+    if (!result.success) {
+      setErrors((prev) => ({
+        ...prev,
+        [name]: result.error.issues[0].message,
+      }));
+    } else {
+      setErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
+  };
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -63,21 +82,53 @@ const EditApplication = () => {
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    validateField(name, value);
   };
 
   const handleEditToggle = () => {
     setIsEditing(!isEditing);
     if (isEditing && application) {
-      // Reset form data if canceling edit
       setFormData(application);
+      setErrors({});
     }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // TODO: Add update mutation when backend endpoint is ready
-    toast.success("Application updated successfully!");
-    setIsEditing(false);
+    if (!id) return;
+
+    const updateData: UpdateApplicationDto = {
+      fullName: formData.fullName,
+      email: formData.email,
+      phoneNumber: formData.phoneNumber,
+      position: formData.position,
+      yearsOfExperience: formData.yearsOfExperience,
+      portfolioUrl: formData.portfolioUrl || undefined,
+      linkedInProfile: formData.linkedInProfile || undefined,
+      githubProfile: formData.githubProfile || undefined,
+      coverLetter: formData.coverLetter || undefined,
+    };
+
+    // Validate all fields
+    const result = updateSchema.safeParse(updateData);
+    if (!result.success) {
+      const fieldErrors: FormErrors = {};
+      result.error.issues.forEach((issue) => {
+        fieldErrors[issue.path[0] as string] = issue.message;
+      });
+      setErrors(fieldErrors);
+      return;
+    }
+
+    updateMutation.mutate(
+      { id, data: updateData },
+      {
+        onSuccess: () => {
+          setIsEditing(false);
+          setErrors({});
+        },
+      },
+    );
   };
 
   const handleDelete = () => {
@@ -87,26 +138,18 @@ const EditApplication = () => {
   const handleConfirmDelete = () => {
     if (!id) return;
 
-    setShowDeleteModal(false);
-    navigate("/application");
-
-    // Then delete (component will unmount, no refetch issues)
-    deleteMutation.mutate(id);
+    deleteMutation.mutate(id, {
+      onSuccess: () => {
+        setShowDeleteModal(false);
+        navigate("/application");
+      },
+    });
   };
 
   const handleDownloadResume = () => {
     if (formData.resumeUrl) {
       window.open(formData.resumeUrl, "_blank");
     }
-  };
-
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
   };
 
   if (isLoading) return <Loader fullScreen text="Loading application..." />;
@@ -127,7 +170,6 @@ const EditApplication = () => {
 
   return (
     <div className="space-y-6">
-      {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <DeleteModal
           title="Delete Application"
@@ -138,20 +180,16 @@ const EditApplication = () => {
         />
       )}
 
-      {/* Header */}
       <div className="mb-2 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-800">
-            Application Details
-          </h1>
-          <p className="text-gray-600 mt-1">
-            {isEditing
-              ? "Edit application information"
-              : "View application information"}
-          </p>
+        <div className="flex gap-2 items-center">
+          <BackButton />
+          <div className="">
+            <h1 className="text-3xl font-bold text-gray-800">
+              Application Details
+            </h1>
+          </div>
         </div>
         <div className="flex gap-3">
-          {/* Edit Button */}
           <button
             type="button"
             onClick={handleEditToggle}
@@ -174,7 +212,6 @@ const EditApplication = () => {
             )}
           </button>
 
-          {/* Delete Button */}
           <button
             type="button"
             onClick={handleDelete}
@@ -186,12 +223,9 @@ const EditApplication = () => {
         </div>
       </div>
 
-      {/* Main Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column */}
           <div className="space-y-6">
-            {/* Personal Information */}
             <div className="liquid-glass rounded-2xl p-6">
               <h3 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
                 <FiUser className="text-blue-600" />
@@ -214,14 +248,21 @@ const EditApplication = () => {
                       value={formData.fullName || ""}
                       onChange={handleChange}
                       disabled={!isEditing}
-                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
-                        isEditing
-                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          : "bg-gray-50 cursor-not-allowed"
+                      className={`w-full pl-10 pr-4 py-2.5 border rounded-xl outline-none transition-all text-gray-800 ${
+                        errors.fullName
+                          ? "border-red-500 focus:ring-red-500"
+                          : isEditing
+                            ? "border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            : "border-gray-300 bg-gray-50 cursor-not-allowed"
                       }`}
                       placeholder="Enter full name"
                     />
                   </div>
+                  {errors.fullName && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {errors.fullName}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -239,14 +280,19 @@ const EditApplication = () => {
                       value={formData.email || ""}
                       onChange={handleChange}
                       disabled={!isEditing}
-                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
-                        isEditing
-                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          : "bg-gray-50 cursor-not-allowed"
+                      className={`w-full pl-10 pr-4 py-2.5 border rounded-xl outline-none transition-all text-gray-800 ${
+                        errors.email
+                          ? "border-red-500 focus:ring-red-500"
+                          : isEditing
+                            ? "border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            : "border-gray-300 bg-gray-50 cursor-not-allowed"
                       }`}
                       placeholder="email@example.com"
                     />
                   </div>
+                  {errors.email && (
+                    <p className="text-red-500 text-xs mt-1">{errors.email}</p>
+                  )}
                 </div>
 
                 <div>
@@ -264,19 +310,25 @@ const EditApplication = () => {
                       value={formData.phoneNumber || ""}
                       onChange={handleChange}
                       disabled={!isEditing}
-                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
-                        isEditing
-                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          : "bg-gray-50 cursor-not-allowed"
+                      className={`w-full pl-10 pr-4 py-2.5 border rounded-xl outline-none transition-all text-gray-800 ${
+                        errors.phoneNumber
+                          ? "border-red-500 focus:ring-red-500"
+                          : isEditing
+                            ? "border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            : "border-gray-300 bg-gray-50 cursor-not-allowed"
                       }`}
                       placeholder="+1 234 567 8900"
                     />
                   </div>
+                  {errors.phoneNumber && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {errors.phoneNumber}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Professional Information */}
             <div className="liquid-glass rounded-2xl p-6">
               <h3 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
                 <FiBriefcase className="text-blue-600" />
@@ -299,14 +351,21 @@ const EditApplication = () => {
                       value={formData.position || ""}
                       onChange={handleChange}
                       disabled={!isEditing}
-                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
-                        isEditing
-                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          : "bg-gray-50 cursor-not-allowed"
+                      className={`w-full pl-10 pr-4 py-2.5 border rounded-xl outline-none transition-all text-gray-800 ${
+                        errors.position
+                          ? "border-red-500 focus:ring-red-500"
+                          : isEditing
+                            ? "border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            : "border-gray-300 bg-gray-50 cursor-not-allowed"
                       }`}
                       placeholder="Enter position"
                     />
                   </div>
+                  {errors.position && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {errors.position}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -324,22 +383,27 @@ const EditApplication = () => {
                       value={formData.yearsOfExperience || ""}
                       onChange={handleChange}
                       disabled={!isEditing}
-                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
-                        isEditing
-                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          : "bg-gray-50 cursor-not-allowed"
+                      className={`w-full pl-10 pr-4 py-2.5 border rounded-xl outline-none transition-all text-gray-800 ${
+                        errors.yearsOfExperience
+                          ? "border-red-500 focus:ring-red-500"
+                          : isEditing
+                            ? "border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            : "border-gray-300 bg-gray-50 cursor-not-allowed"
                       }`}
                       placeholder="Enter years of experience"
                     />
                   </div>
+                  {errors.yearsOfExperience && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {errors.yearsOfExperience}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Right Column */}
           <div className="space-y-6">
-            {/* Links & Resume */}
             <div className="liquid-glass rounded-2xl p-6">
               <h3 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
                 <FiGlobe className="text-blue-600" />
@@ -362,14 +426,21 @@ const EditApplication = () => {
                       value={formData.portfolioUrl || ""}
                       onChange={handleChange}
                       disabled={!isEditing}
-                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
-                        isEditing
-                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          : "bg-gray-50 cursor-not-allowed"
+                      className={`w-full pl-10 pr-4 py-2.5 border rounded-xl outline-none transition-all text-gray-800 ${
+                        errors.portfolioUrl
+                          ? "border-red-500 focus:ring-red-500"
+                          : isEditing
+                            ? "border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            : "border-gray-300 bg-gray-50 cursor-not-allowed"
                       }`}
                       placeholder="https://yourportfolio.com"
                     />
                   </div>
+                  {errors.portfolioUrl && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {errors.portfolioUrl}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -387,14 +458,21 @@ const EditApplication = () => {
                       value={formData.linkedInProfile || ""}
                       onChange={handleChange}
                       disabled={!isEditing}
-                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
-                        isEditing
-                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          : "bg-gray-50 cursor-not-allowed"
+                      className={`w-full pl-10 pr-4 py-2.5 border rounded-xl outline-none transition-all text-gray-800 ${
+                        errors.linkedInProfile
+                          ? "border-red-500 focus:ring-red-500"
+                          : isEditing
+                            ? "border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            : "border-gray-300 bg-gray-50 cursor-not-allowed"
                       }`}
                       placeholder="https://linkedin.com/in/username"
                     />
                   </div>
+                  {errors.linkedInProfile && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {errors.linkedInProfile}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -412,17 +490,23 @@ const EditApplication = () => {
                       value={formData.githubProfile || ""}
                       onChange={handleChange}
                       disabled={!isEditing}
-                      className={`w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 ${
-                        isEditing
-                          ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          : "bg-gray-50 cursor-not-allowed"
+                      className={`w-full pl-10 pr-4 py-2.5 border rounded-xl outline-none transition-all text-gray-800 ${
+                        errors.githubProfile
+                          ? "border-red-500 focus:ring-red-500"
+                          : isEditing
+                            ? "border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            : "border-gray-300 bg-gray-50 cursor-not-allowed"
                       }`}
                       placeholder="https://github.com/username"
                     />
                   </div>
+                  {errors.githubProfile && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {errors.githubProfile}
+                    </p>
+                  )}
                 </div>
 
-                {/* Resume */}
                 {formData.resumeUrl && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -457,7 +541,6 @@ const EditApplication = () => {
               </div>
             </div>
 
-            {/* Cover Letter */}
             <div className="liquid-glass rounded-2xl p-6">
               <h3 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
                 <FiFile className="text-blue-600" />
@@ -471,19 +554,25 @@ const EditApplication = () => {
                   onChange={handleChange}
                   rows={6}
                   disabled={!isEditing}
-                  className={`w-full px-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all resize-none text-gray-800 ${
-                    isEditing
-                      ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      : "bg-gray-50 cursor-not-allowed"
+                  className={`w-full px-4 py-2.5 border rounded-xl outline-none transition-all resize-none text-gray-800 ${
+                    errors.coverLetter
+                      ? "border-red-500 focus:ring-red-500"
+                      : isEditing
+                        ? "border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        : "border-gray-300 bg-gray-50 cursor-not-allowed"
                   }`}
                   placeholder="Tell us why you're interested in this position..."
                 />
+                {errors.coverLetter && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.coverLetter}
+                  </p>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Save Button - Only visible when editing */}
         {isEditing && (
           <div className="flex justify-end gap-4">
             <button
@@ -496,10 +585,15 @@ const EditApplication = () => {
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg shadow-blue-500/30 flex items-center gap-2"
+              disabled={updateMutation.isPending}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg shadow-blue-500/30 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <FiSave size={18} />
-              Save Changes
+              {updateMutation.isPending ? (
+                <FiLoader className="animate-spin" size={18} />
+              ) : (
+                <FiSave size={18} />
+              )}
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
             </button>
           </div>
         )}
