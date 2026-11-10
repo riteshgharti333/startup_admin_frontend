@@ -25,95 +25,12 @@ import { MdBusiness } from "react-icons/md";
 import { toast } from "react-hot-toast";
 import Table from "../../components/Table";
 import BackButton from "../../components/BackButton";
-
-interface Business {
-  id: string;
-  businessName: string;
-  city: string | null;
-  phoneNumber: string | null;
-  rating: number | null;
-  reviewCount: number | null;
-}
-
-interface BusinessList {
-  id: string;
-  title: string;
-  category: string;
-  location: string;
-  keyword: string;
-  description: string | null;
-  createdAt: string;
-  updatedAt: string;
-  _count: { businesses: number };
-  businesses: Business[];
-}
-
-interface ApiResponse {
-  success: boolean;
-  message: string;
-  data: BusinessList;
-}
-
-const useBusinessList = (id: string) => {
-  const mock: ApiResponse = {
-    success: true,
-    message: "Business list fetched successfully",
-    data: {
-      id: "16e083a4-d23b-4f41-b97d-e35ae69aa766",
-      title: "Cafe Restaurants in NYC",
-      category: "Restaurant",
-      location: "New York, USA",
-      keyword: "pizza",
-      description: "Lead list scraped from Google Maps",
-      createdAt: "2026-11-09T12:59:57.859Z",
-      updatedAt: "2026-11-09T12:59:57.859Z",
-      _count: { businesses: 3 },
-      businesses: [
-        {
-          id: "34f4575c-0d92-4fe6-aa65-488b4783d52e",
-          businessName: "Joe's Pizza",
-          city: "New York",
-          phoneNumber: "+12125550100",
-          rating: 4.5,
-          reviewCount: 2310,
-        },
-        {
-          id: "e933d43f-ae56-4e66-b827-4bbe68f224ec",
-          businessName: "Lombardi's Pizza",
-          city: null,
-          phoneNumber: null,
-          rating: 4.3,
-          reviewCount: 8900,
-        },
-        {
-          id: "771c4041-7eb1-483b-8dd9-3f91e762b930",
-          businessName: "Prince Street Pizza",
-          city: "New York",
-          phoneNumber: "+12125550200",
-          rating: 4.7,
-          reviewCount: 5400,
-        },
-      ],
-    },
-  };
-
-  return {
-    data: mock.data,
-    isLoading: false,
-    isError: false,
-    error: null as Error | null,
-    refetch: () => {},
-  };
-};
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-
-const uid = () => `biz_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+import { useBusinessList } from "../../service/hooks/useBusinessList";
+import {
+  useCreateBusiness,
+  useBulkImportBusinesses,
+} from "../../service/hooks/useBusiness";
+import type { Business, CreateBusinessDto } from "../../service/types";
 
 interface BusinessForm {
   businessName: string;
@@ -131,34 +48,41 @@ const emptyForm: BusinessForm = {
   reviewCount: "",
 };
 
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
 const Businesses = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { data, isLoading, isError, error, refetch } = useBusinessList(
-    id || "",
-  );
 
-  const [localBusinesses, setLocalBusinesses] = useState<Business[]>([]);
-  const [seeded, setSeeded] = useState(false);
+  const {
+    data: list,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useBusinessList(id || "");
 
-  // Seed local state from fetched data once
-  if (!seeded && data?.businesses) {
-    setLocalBusinesses(data.businesses);
-    setSeeded(true);
-  }
+  const createMutation = useCreateBusiness();
+  const bulkMutation = useBulkImportBusinesses();
 
   const [showAdd, setShowAdd] = useState(false);
   const [addMode, setAddMode] = useState<"single" | "bulk">("single");
   const [form, setForm] = useState<BusinessForm>(emptyForm);
   const [bulkText, setBulkText] = useState("");
   const [bulkFileName, setBulkFileName] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
+
+  const isSaving = createMutation.isPending || bulkMutation.isPending;
+
+  const businesses: Business[] = list?.businesses ?? [];
 
   const handleRowClick = (business: Business) => {
     navigate(`/businesses/${business.id}`);
   };
-
-  const businesses = localBusinesses;
 
   const columns: ColumnDef<Business>[] = useMemo(
     () => [
@@ -313,43 +237,42 @@ const Businesses = () => {
     setAddMode("single");
   };
 
-  const handleAddSingle = async () => {
+  const handleAddSingle = () => {
+    if (!id) return;
     if (!form.businessName.trim()) {
       toast.error("Business name is required");
       return;
     }
-    setIsSaving(true);
-    const toastId = toast.loading("Adding business...");
-    try {
-      await new Promise((r) => setTimeout(r, 500));
-      const newBiz: Business = {
-        id: uid(),
-        businessName: form.businessName.trim(),
-        city: form.city.trim() || null,
-        phoneNumber: form.phoneNumber.trim() || null,
-        rating: form.rating ? parseFloat(form.rating) : null,
-        reviewCount: form.reviewCount ? parseInt(form.reviewCount, 10) : null,
-      };
-      setLocalBusinesses((prev) => [newBiz, ...prev]);
-      toast.success("Business added!", { id: toastId });
-      closeAdd();
-    } catch {
-      toast.error("Failed to add business", { id: toastId });
-    } finally {
-      setIsSaving(false);
-    }
+
+    const payload: CreateBusinessDto = {
+      businessListId: id,
+      businessName: form.businessName.trim(),
+      city: form.city.trim() || undefined,
+      phoneNumber: form.phoneNumber.trim() || undefined,
+      rating: form.rating ? parseFloat(form.rating) : undefined,
+      reviewCount: form.reviewCount
+        ? parseInt(form.reviewCount, 10)
+        : undefined,
+    };
+
+    createMutation.mutate(payload, {
+      onSuccess: () => {
+        toast.success("Business added!");
+        closeAdd();
+      },
+      onError: () => toast.error("Failed to add business"),
+    });
   };
 
   const parseBulkInput = (raw: string): BusinessForm[] => {
     const trimmed = raw.trim();
     if (!trimmed) return [];
 
-    // JSON array
     if (trimmed.startsWith("[")) {
       try {
         const arr = JSON.parse(trimmed);
         if (Array.isArray(arr)) {
-          return arr
+          return (arr as Array<Record<string, unknown>>)
             .map((row) => ({
               businessName: String(row.businessName ?? row.name ?? "").trim(),
               city: String(row.city ?? "").trim(),
@@ -365,7 +288,6 @@ const Businesses = () => {
       }
     }
 
-    // CSV: businessName,city,phoneNumber,rating,reviewCount
     const lines = trimmed.split(/\r?\n/).filter((l) => l.trim());
     const rows: BusinessForm[] = [];
     lines.forEach((line, idx) => {
@@ -403,32 +325,33 @@ const Businesses = () => {
     reader.readAsText(file);
   };
 
-  const handleBulkSubmit = async () => {
+  const handleBulkSubmit = () => {
+    if (!id) return;
     const rows = parseBulkInput(bulkText);
     if (rows.length === 0) {
       toast.error("Please add at least one valid row");
       return;
     }
-    setIsSaving(true);
-    const toastId = toast.loading(`Adding ${rows.length} businesses...`);
-    try {
-      await new Promise((r) => setTimeout(r, 700));
-      const created: Business[] = rows.map((r) => ({
-        id: uid(),
-        businessName: r.businessName,
-        city: r.city || null,
-        phoneNumber: r.phoneNumber || null,
-        rating: r.rating ? parseFloat(r.rating) : null,
-        reviewCount: r.reviewCount ? parseInt(r.reviewCount, 10) : null,
-      }));
-      setLocalBusinesses((prev) => [...created, ...prev]);
-      toast.success(`${created.length} businesses added!`, { id: toastId });
-      closeAdd();
-    } catch {
-      toast.error("Failed to add businesses", { id: toastId });
-    } finally {
-      setIsSaving(false);
-    }
+
+    bulkMutation.mutate(
+      {
+        businessListId: id,
+        businesses: rows.map((r) => ({
+          businessName: r.businessName,
+          city: r.city || undefined,
+          phoneNumber: r.phoneNumber || undefined,
+          rating: r.rating ? parseFloat(r.rating) : undefined,
+          reviewCount: r.reviewCount ? parseInt(r.reviewCount, 10) : undefined,
+        })),
+      },
+      {
+        onSuccess: () => {
+          toast.success(`${rows.length} businesses added!`);
+          closeAdd();
+        },
+        onError: () => toast.error("Failed to add businesses"),
+      },
+    );
   };
 
   const bulkPreviewCount = useMemo(
@@ -473,13 +396,13 @@ const Businesses = () => {
               <span className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/30 flex-shrink-0">
                 <MdBusiness className="text-white" size={22} />
               </span>
-              {data?.title || "Businesses"}
+              {list?.title || "Businesses"}
               <span className="text-sm font-normal text-gray-500">
                 ({businesses.length})
               </span>
             </h1>
-            {data?.description && (
-              <p className="text-gray-500 mt-1 text-sm">{data.description}</p>
+            {list?.description && (
+              <p className="text-gray-500 mt-1 text-sm">{list.description}</p>
             )}
           </div>
         </div>
@@ -495,16 +418,16 @@ const Businesses = () => {
       </div>
 
       {/* List meta */}
-      {data && (
+      {list && (
         <div className="liquid-glass rounded-2xl p-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <MetaItem icon={FiTag} label="Category" value={data.category} />
-            <MetaItem icon={FiMapPin} label="Location" value={data.location} />
-            <MetaItem icon={FiSearch} label="Keyword" value={data.keyword} />
+            <MetaItem icon={FiTag} label="Category" value={list.category} />
+            <MetaItem icon={FiMapPin} label="Location" value={list.location} />
+            <MetaItem icon={FiSearch} label="Keyword" value={list.keyword} />
             <MetaItem
               icon={FiCalendar}
               label="Created"
-              value={formatDate(data.createdAt)}
+              value={formatDate(list.createdAt)}
             />
           </div>
         </div>
@@ -580,7 +503,6 @@ const Businesses = () => {
               </button>
             </div>
 
-            {/* Mode tabs */}
             <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-xl mb-4">
               <button
                 type="button"

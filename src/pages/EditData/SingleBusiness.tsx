@@ -23,7 +23,6 @@ import {
   FiMessageCircle,
   FiHash,
   FiExternalLink,
-  FiSend,
   FiList,
 } from "react-icons/fi";
 import { MdBusiness } from "react-icons/md";
@@ -31,98 +30,12 @@ import { toast } from "react-hot-toast";
 import DeleteModal from "../../components/DeleteModal";
 import Loader from "../../components/Loader";
 import BackButton from "../../components/BackButton";
-
-interface BusinessListRef {
-  id: string;
-  title: string;
-}
-
-interface Business {
-  id: string;
-  businessListId: string;
-  placeId: string | null;
-  businessName: string;
-  category: string | null;
-  phoneNumber: string | null;
-  email: string | null;
-  website: string | null;
-  fullAddress: string | null;
-  city: string | null;
-  googleMapsUrl: string | null;
-  rating: number | null;
-  reviewCount: number | null;
-  contactPerson: string | null;
-  leadStatus: string;
-  notes: string | null;
-  lastContactedAt: string | null;
-  nextFollowUpAt: string | null;
-  emailStatus: string;
-  lastEmailSentAt: string | null;
-  emailCount: number;
-  whatsappStatus: string;
-  lastWhatsAppSentAt: string | null;
-  whatsappCount: number;
-  whatsappOptIn: boolean;
-  whatsappOptInAt: string | null;
-  createdAt: string;
-  updatedAt: string | null;
-  businessList: BusinessListRef;
-}
-
-interface ApiResponse {
-  success: boolean;
-  message: string;
-  data: Business;
-}
-
-const useBusiness = (id: string) => {
-  const mock: ApiResponse = {
-    success: true,
-    message: "Business fetched successfully",
-    data: {
-      id: "e933d43f-ae56-4e66-b827-4bbe68f224ec",
-      businessListId: "16e083a4-d23b-4f41-b97d-e35ae69aa766",
-      placeId: "test_place_003",
-      businessName: "Lombardi's Pizza",
-      category: "Pizza restaurant",
-      phoneNumber: null,
-      email: null,
-      website: null,
-      fullAddress: null,
-      city: null,
-      googleMapsUrl: null,
-      rating: 4.3,
-      reviewCount: 8900,
-      contactPerson: null,
-      leadStatus: "NEW",
-      notes: null,
-      lastContactedAt: null,
-      nextFollowUpAt: null,
-      emailStatus: "NOT_SENT",
-      lastEmailSentAt: null,
-      emailCount: 0,
-      whatsappStatus: "NOT_SENT",
-      lastWhatsAppSentAt: null,
-      whatsappCount: 0,
-      whatsappOptIn: false,
-      whatsappOptInAt: null,
-      createdAt: "2026-11-09T13:03:09.706Z",
-      updatedAt: "2026-11-09T13:03:09.706Z",
-      businessList: {
-        id: "16e083a4-d23b-4f41-b97d-e35ae69aa766",
-        title: "Cafe Restaurants in NYC",
-      },
-    },
-  };
-
-  return {
-    data: mock.data,
-    isLoading: false,
-    isError: false,
-    error: null as Error | null,
-    refetch: () => {},
-  };
-};
+import {
+  useBusiness,
+  useUpdateBusiness,
+  useDeleteBusiness,
+} from "../../service/hooks/useBusiness";
+import type { Business, UpdateBusinessDto } from "../../service/types";
 
 const LEAD_STATUSES = [
   "NEW",
@@ -203,15 +116,24 @@ const statusColor = (status: string): string => {
 const SingleBusiness = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { data: business, isLoading, isError, error, refetch } = useBusiness(
-    id || "",
-  );
+
+  const {
+    data: business,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useBusiness(id || "");
+
+  const updateMutation = useUpdateBusiness();
+  const deleteMutation = useDeleteBusiness();
 
   const [formData, setFormData] = useState<Partial<Business>>({});
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+
+  const isSaving = updateMutation.isPending;
+  const isDeleting = deleteMutation.isPending;
 
   useEffect(() => {
     if (business) setFormData(business);
@@ -244,37 +166,61 @@ const SingleBusiness = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!id) return;
-    setIsSaving(true);
-    const toastId = toast.loading("Saving changes...");
-    try {
-      await new Promise((r) => setTimeout(r, 700));
-      toast.success("Business updated successfully!", { id: toastId });
-      setIsEditing(false);
-      refetch();
-    } catch (err) {
-      toast.error("Failed to update business", { id: toastId });
-    } finally {
-      setIsSaving(false);
-    }
+    if (!id || !formData.businessListId) return;
+
+    const payload: UpdateBusinessDto = {
+      businessName: formData.businessName || undefined,
+      category: formData.category || undefined,
+      phoneNumber: formData.phoneNumber || undefined,
+      email: formData.email || undefined,
+      website: formData.website || undefined,
+      fullAddress: formData.fullAddress || undefined,
+      city: formData.city || undefined,
+      googleMapsUrl: formData.googleMapsUrl || undefined,
+      contactPerson: formData.contactPerson || undefined,
+      leadStatus: formData.leadStatus || undefined,
+      notes: formData.notes || undefined,
+      lastContactedAt: formData.lastContactedAt || undefined,
+      nextFollowUpAt: formData.nextFollowUpAt || undefined,
+      emailStatus: formData.emailStatus || undefined,
+      lastEmailSentAt: formData.lastEmailSentAt || undefined,
+      whatsappStatus: formData.whatsappStatus || undefined,
+      lastWhatsAppSentAt: formData.lastWhatsAppSentAt || undefined,
+      whatsappOptIn: formData.whatsappOptIn,
+    };
+
+    updateMutation.mutate(
+      {
+        id,
+        businessListId: formData.businessListId,
+        data: payload,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Business updated successfully!");
+          setIsEditing(false);
+        },
+        onError: () => toast.error("Failed to update business"),
+      },
+    );
   };
 
-  const handleConfirmDelete = async () => {
-    if (!id) return;
-    setIsDeleting(true);
-    const toastId = toast.loading("Deleting business...");
-    try {
-      await new Promise((r) => setTimeout(r, 700));
-      toast.success("Business deleted successfully!", { id: toastId });
-      setShowDeleteModal(false);
-      navigate(`/business-lists/${business?.businessListId || ""}`);
-    } catch {
-      toast.error("Failed to delete business", { id: toastId });
-    } finally {
-      setIsDeleting(false);
-    }
+  const handleConfirmDelete = () => {
+    if (!id || !business?.businessListId) return;
+
+    deleteMutation.mutate(
+      { id, businessListId: business.businessListId },
+      {
+        onSuccess: () => {
+          toast.success("Business deleted successfully!");
+          setShowDeleteModal(false);
+          navigate(`/business-lists/${business.businessListId}`);
+        },
+        onError: () => toast.error("Failed to delete business"),
+      },
+    );
   };
 
   if (isLoading) return <Loader fullScreen text="Loading business..." />;
@@ -390,7 +336,6 @@ const SingleBusiness = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left column */}
           <div className="space-y-6">
-            {/* Basic Info */}
             <Section icon={FiBriefcase} title="Business Information">
               <Field icon={FiTag} label="Business Name">
                 <input
@@ -434,14 +379,13 @@ const SingleBusiness = () => {
                   name="placeId"
                   value={formData.placeId || ""}
                   onChange={handleChange}
-                  disabled={!isEditing}
+                  disabled
                   className={inputCls()}
                   placeholder="Google Place ID"
                 />
               </Field>
             </Section>
 
-            {/* Contact Info */}
             <Section icon={FiPhone} title="Contact Details">
               <Field icon={FiPhone} label="Phone Number">
                 <input
@@ -519,7 +463,6 @@ const SingleBusiness = () => {
 
           {/* Right column */}
           <div className="space-y-6">
-            {/* Rating */}
             <div className="liquid-glass rounded-2xl p-6">
               <h3 className="text-md font-semibold text-gray-800 mb-4 flex items-center gap-2">
                 <FiStar className="text-blue-600" />
@@ -534,9 +477,7 @@ const SingleBusiness = () => {
                     </span>
                   </div>
                   <p className="text-2xl font-bold text-gray-800">
-                    {formData.rating != null
-                      ? formData.rating.toFixed(1)
-                      : "—"}
+                    {formData.rating != null ? formData.rating.toFixed(1) : "—"}
                   </p>
                 </div>
                 <div className="rounded-xl bg-blue-50 border border-blue-100 p-4">
@@ -555,7 +496,6 @@ const SingleBusiness = () => {
               </div>
             </div>
 
-            {/* Lead status */}
             <Section icon={FiCheckCircle} title="Lead Status">
               <Field icon={FiCheckCircle} label="Status">
                 <select
@@ -604,7 +544,6 @@ const SingleBusiness = () => {
               </Field>
             </Section>
 
-            {/* Email status */}
             <Section icon={FiMail} title="Email Outreach">
               <Field icon={FiMail} label="Email Status">
                 <select
@@ -642,7 +581,6 @@ const SingleBusiness = () => {
               </div>
             </Section>
 
-            {/* WhatsApp */}
             <Section icon={FiMessageCircle} title="WhatsApp Outreach">
               <Field icon={FiMessageCircle} label="WhatsApp Status">
                 <select
@@ -703,7 +641,6 @@ const SingleBusiness = () => {
           </div>
         </div>
 
-        {/* Notes */}
         <Section icon={FiFileText} title="Notes">
           <textarea
             name="notes"
@@ -720,7 +657,6 @@ const SingleBusiness = () => {
           />
         </Section>
 
-        {/* Metadata */}
         <Section icon={FiClock} title="Metadata">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <MetaRow
@@ -742,13 +678,13 @@ const SingleBusiness = () => {
           </div>
         </Section>
 
-        {/* Save / Cancel */}
         {isEditing && (
           <div className="flex justify-end gap-4">
             <button
               type="button"
               onClick={handleEditToggle}
-              className="px-6 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-100 transition-all duration-200 flex items-center gap-2"
+              disabled={isSaving}
+              className="px-6 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-100 transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
             >
               <FiX size={18} />
               Cancel

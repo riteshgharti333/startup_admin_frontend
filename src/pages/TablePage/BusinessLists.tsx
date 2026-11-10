@@ -21,73 +21,14 @@ import {
 import { MdBusiness } from "react-icons/md";
 import { toast } from "react-hot-toast";
 import DeleteModal from "../../components/DeleteModal";
-
-interface BusinessList {
-  id: string;
-  title: string;
-  category: string;
-  location: string;
-  keyword: string;
-  description: string | null;
-  createdAt: string;
-  updatedAt: string;
-  _count: { businesses: number };
-}
-
-interface CreateForm {
-  title: string;
-  category: string;
-  location: string;
-  keyword: string;
-  description: string;
-}
-
-const seedLists: BusinessList[] = [
-  {
-    id: "16e083a4-d23b-4f41-b97d-e35ae69aa766",
-    title: "Cafe Restaurants in NYC",
-    category: "Restaurant",
-    location: "New York, USA",
-    keyword: "pizza",
-    description: "Lead list scraped from Google Maps",
-    createdAt: "2026-11-09T12:59:57.859Z",
-    updatedAt: "2026-11-09T12:59:57.859Z",
-    _count: { businesses: 3 },
-  },
-  {
-    id: "840bd465-53d2-43cf-a274-3597d5fa1619",
-    title: "Pizza Restaurants in NYC",
-    category: "Restaurant",
-    location: "New York, USA",
-    keyword: "pizza",
-    description: "Lead list scraped from Google Maps",
-    createdAt: "2026-11-09T12:59:33.158Z",
-    updatedAt: "2026-11-09T12:59:33.158Z",
-    _count: { businesses: 0 },
-  },
-  {
-    id: "d834f778-6697-4ebc-8123-a37580b4dc7f",
-    title: "Pizza Restaurants in NYC",
-    category: "Restaurant",
-    location: "New York, USA",
-    keyword: "pizza",
-    description: "Lead list scraped from Google Maps",
-    createdAt: "2026-11-09T12:48:13.774Z",
-    updatedAt: "2026-11-09T12:48:13.774Z",
-    _count: { businesses: 0 },
-  },
-  {
-    id: "50882cc6-388f-401c-b249-d9152ed4095d",
-    title: "Pizza Restaurants in NYC",
-    category: "Restaurant",
-    location: "New York, USA",
-    keyword: "pizza",
-    description: "Lead list scraped from Google Maps",
-    createdAt: "2026-11-09T12:42:26.855Z",
-    updatedAt: "2026-11-09T12:42:26.855Z",
-    _count: { businesses: 0 },
-  },
-];
+import {
+  useBusinessLists,
+  useCreateBusinessList,
+  useCreateBusinessListsBulk,
+  useUpdateBusinessList,
+  useDeleteBusinessList,
+} from "../../service/hooks/useBusinessList";
+import type { BusinessList, CreateBusinessListDto } from "../../service/types";
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, {
@@ -96,7 +37,7 @@ const formatDate = (iso: string) =>
     year: "numeric",
   });
 
-const emptyForm: CreateForm = {
+const emptyForm: CreateBusinessListDto = {
   title: "",
   category: "",
   location: "",
@@ -104,28 +45,39 @@ const emptyForm: CreateForm = {
   description: "",
 };
 
-const uid = () =>
-  `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
 const BusinessLists = () => {
   const navigate = useNavigate();
 
-  const [lists, setLists] = useState<BusinessList[]>(seedLists);
+  const {
+    data: lists = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useBusinessLists();
+
+  const createMutation = useCreateBusinessList();
+  const bulkMutation = useCreateBusinessListsBulk();
+  const updateMutation = useUpdateBusinessList();
+  const deleteMutation = useDeleteBusinessList();
+
   const [search, setSearch] = useState("");
 
   const [editTarget, setEditTarget] = useState<BusinessList | null>(null);
   const [editTitle, setEditTitle] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<BusinessList | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const [showCreate, setShowCreate] = useState(false);
   const [createMode, setCreateMode] = useState<"single" | "bulk">("single");
-  const [createForm, setCreateForm] = useState<CreateForm>(emptyForm);
+  const [createForm, setCreateForm] =
+    useState<CreateBusinessListDto>(emptyForm);
   const [bulkText, setBulkText] = useState("");
   const [bulkFileName, setBulkFileName] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
+
+  const isSaving = updateMutation.isPending;
+  const isDeleting = deleteMutation.isPending;
+  const isCreating = createMutation.isPending || bulkMutation.isPending;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -155,7 +107,7 @@ const BusinessLists = () => {
     setEditTitle("");
   };
 
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = () => {
     if (!editTarget) return;
     const trimmed = editTitle.trim();
     if (!trimmed) {
@@ -166,41 +118,28 @@ const BusinessLists = () => {
       closeEdit();
       return;
     }
-    setIsSaving(true);
-    const toastId = toast.loading("Updating list...");
-    try {
-      await new Promise((r) => setTimeout(r, 500));
-      setLists((prev) =>
-        prev.map((l) =>
-          l.id === editTarget.id
-            ? { ...l, title: trimmed, updatedAt: new Date().toISOString() }
-            : l,
-        ),
-      );
-      toast.success("List updated successfully!", { id: toastId });
-      setEditTarget(null);
-      setEditTitle("");
-    } catch {
-      toast.error("Failed to update list", { id: toastId });
-    } finally {
-      setIsSaving(false);
-    }
+    updateMutation.mutate(
+      { id: editTarget.id, data: { title: trimmed } },
+      {
+        onSuccess: () => {
+          toast.success("List updated successfully!");
+          setEditTarget(null);
+          setEditTitle("");
+        },
+        onError: () => toast.error("Failed to update list"),
+      },
+    );
   };
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = () => {
     if (!deleteTarget) return;
-    setIsDeleting(true);
-    const toastId = toast.loading("Deleting list...");
-    try {
-      await new Promise((r) => setTimeout(r, 500));
-      setLists((prev) => prev.filter((l) => l.id !== deleteTarget.id));
-      toast.success("List deleted successfully!", { id: toastId });
-      setDeleteTarget(null);
-    } catch {
-      toast.error("Failed to delete list", { id: toastId });
-    } finally {
-      setIsDeleting(false);
-    }
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        toast.success("List deleted successfully!");
+        setDeleteTarget(null);
+      },
+      onError: () => toast.error("Failed to delete list"),
+    });
   };
 
   const resetCreate = () => {
@@ -216,7 +155,7 @@ const BusinessLists = () => {
     resetCreate();
   };
 
-  const handleCreateSingle = async () => {
+  const handleCreateSingle = () => {
     if (!createForm.title.trim()) {
       toast.error("Title is required");
       return;
@@ -234,37 +173,29 @@ const BusinessLists = () => {
       return;
     }
 
-    setIsCreating(true);
-    const toastId = toast.loading("Creating list...");
-    try {
-      await new Promise((r) => setTimeout(r, 500));
-      const now = new Date().toISOString();
-      const newList: BusinessList = {
-        id: uid(),
+    createMutation.mutate(
+      {
         title: createForm.title.trim(),
         category: createForm.category.trim(),
         location: createForm.location.trim(),
         keyword: createForm.keyword.trim(),
-        description: createForm.description.trim() || null,
-        createdAt: now,
-        updatedAt: now,
-        _count: { businesses: 0 },
-      };
-      setLists((prev) => [newList, ...prev]);
-      toast.success("List created successfully!", { id: toastId });
-      closeCreate();
-    } catch {
-      toast.error("Failed to create list", { id: toastId });
-    } finally {
-      setIsCreating(false);
-    }
+        description: createForm.description?.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success("List created successfully!");
+          setShowCreate(false);
+          resetCreate();
+        },
+        onError: () => toast.error("Failed to create list"),
+      },
+    );
   };
 
-  const parseBulkInput = (raw: string): CreateForm[] => {
+  const parseBulkInput = (raw: string): CreateBusinessListDto[] => {
     const trimmed = raw.trim();
     if (!trimmed) return [];
 
-    // JSON array
     if (trimmed.startsWith("[")) {
       try {
         const arr = JSON.parse(trimmed);
@@ -284,11 +215,10 @@ const BusinessLists = () => {
       }
     }
 
-    // CSV: title,category,location,keyword,description
     const lines = trimmed.split(/\r?\n/).filter((l) => l.trim());
-    const rows: CreateForm[] = [];
+    const rows: CreateBusinessListDto[] = [];
     lines.forEach((line, idx) => {
-      if (idx === 0 && /title/i.test(line)) return; // skip header
+      if (idx === 0 && /title/i.test(line)) return;
       const cols = line.split(",").map((c) => c.trim());
       const [title, category, location, keyword, description = ""] = cols;
       if (title && category && location && keyword) {
@@ -316,42 +246,55 @@ const BusinessLists = () => {
     reader.readAsText(file);
   };
 
-  const handleBulkSubmit = async () => {
+  const handleBulkSubmit = () => {
     const rows = parseBulkInput(bulkText);
     if (rows.length === 0) {
       toast.error("Please add at least one valid row");
       return;
     }
-    setIsCreating(true);
-    const toastId = toast.loading(`Creating ${rows.length} lists...`);
-    try {
-      await new Promise((r) => setTimeout(r, 700));
-      const now = new Date().toISOString();
-      const created: BusinessList[] = rows.map((r) => ({
-        id: uid(),
-        title: r.title,
-        category: r.category,
-        location: r.location,
-        keyword: r.keyword,
-        description: r.description || null,
-        createdAt: now,
-        updatedAt: now,
-        _count: { businesses: 0 },
-      }));
-      setLists((prev) => [...created, ...prev]);
-      toast.success(`${created.length} lists created!`, { id: toastId });
-      closeCreate();
-    } catch {
-      toast.error("Failed to create lists", { id: toastId });
-    } finally {
-      setIsCreating(false);
-    }
+    bulkMutation.mutate(
+      { lists: rows },
+      {
+        onSuccess: () => {
+          toast.success(`${rows.length} lists created!`);
+          setShowCreate(false);
+          resetCreate();
+        },
+        onError: () => toast.error("Failed to create lists"),
+      },
+    );
   };
 
   const bulkPreviewCount = useMemo(
     () => parseBulkInput(bulkText).length,
     [bulkText],
   );
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96">
+        <FiLoader className="animate-spin text-blue-600" size={40} />
+        <p className="mt-4 text-gray-600">Loading business lists...</p>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96">
+        <FiAlertCircle className="text-red-500" size={40} />
+        <p className="mt-4 text-red-600">
+          {(error as Error)?.message || "Failed to fetch business lists"}
+        </p>
+        <button
+          onClick={() => refetch()}
+          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -509,7 +452,6 @@ const BusinessLists = () => {
         </div>
       )}
 
-      {/* ---------- CREATE MODAL ---------- */}
       {showCreate && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
@@ -544,7 +486,6 @@ const BusinessLists = () => {
               </button>
             </div>
 
-            {/* Mode tabs */}
             <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-xl mb-4">
               <button
                 type="button"
@@ -615,7 +556,7 @@ const BusinessLists = () => {
                     Description
                   </label>
                   <textarea
-                    value={createForm.description}
+                    value={createForm.description || ""}
                     onChange={(e) =>
                       setCreateForm((p) => ({
                         ...p,
@@ -711,7 +652,6 @@ const BusinessLists = () => {
         </div>
       )}
 
-      {/* ---------- EDIT TITLE MODAL ---------- */}
       {editTarget && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
@@ -796,7 +736,6 @@ const BusinessLists = () => {
         </div>
       )}
 
-      {/* ---------- DELETE MODAL ---------- */}
       {deleteTarget && (
         <DeleteModal
           title="Delete Business List"
