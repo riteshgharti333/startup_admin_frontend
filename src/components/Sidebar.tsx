@@ -5,6 +5,7 @@ import { MdDashboard } from "react-icons/md";
 import { FaWpforms } from "react-icons/fa";
 import { IoPeopleOutline } from "react-icons/io5";
 import { RiUserFollowLine } from "react-icons/ri";
+import { MdBusiness } from "react-icons/md";
 
 const Sidebar: React.FC = () => {
   const navItems = [
@@ -12,6 +13,7 @@ const Sidebar: React.FC = () => {
     { path: "/application", label: "Applications", icon: FaWpforms },
     { path: "/client-leads", label: "Client Leads", icon: IoPeopleOutline },
     { path: "/subscribers", label: "Subscribers", icon: RiUserFollowLine },
+    { path: "/business-lists", label: "Business", icon: MdBusiness },
   ];
 
   return (

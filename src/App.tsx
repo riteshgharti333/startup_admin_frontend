@@ -13,6 +13,9 @@ import LeadTable from "./pages/TablePage/LeadTable";
 import EditLead from "./pages/EditData/EditLead";
 import SubscriberTable from "./pages/TablePage/SubscriberTable";
 import { useMe } from "./service/hooks/useAuth";
+import BusinessLists from "./pages/TablePage/BusinessLists";
+import Businesses from "./pages/TablePage/Businesses";
+import SingleBusiness from "./pages/EditData/SingleBusiness";
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -59,6 +62,11 @@ function App() {
             <Route path="/client-leads" element={<LeadTable />} />
             <Route path="/lead/:id" element={<EditLead />} />
             <Route path="/subscribers" element={<SubscriberTable />} />
+            <Route path="/subscribers" element={<SubscriberTable />} />
+            <Route path="/business-lists" element={<BusinessLists />} />
+            <Route path="/business-lists/:id" element={<Businesses />} />
+            <Route path="/businesses/:id" element={<SingleBusiness />} />
+
           </Route>
 
           {/* Catch all - redirect to login or dashboard */}
