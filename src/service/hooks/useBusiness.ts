@@ -65,26 +65,15 @@ export const useBulkImportBusinesses = (): UseMutationResult<
   });
 };
 
-export const useUpdateBusiness = (): UseMutationResult<
-  unknown,
-  Error,
-  { id: string; businessListId: string; data: UpdateBusinessDto }
-> => {
+export const useUpdateBusiness = () => {
   const queryClient = useQueryClient();
-
-  return useMutation<
-    unknown,
-    Error,
-    { id: string; businessListId: string; data: UpdateBusinessDto }
-  >({
-    mutationFn: ({ id, data }) => businessApi.updateBusiness(id, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["businesses"] });
-      queryClient.invalidateQueries({ queryKey: ["business", variables.id] });
-      queryClient.invalidateQueries({
-        queryKey: ["business-list", variables.businessListId],
-      });
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateBusinessDto }) =>
+      businessApi.updateBusiness(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["business-list"] });
       queryClient.invalidateQueries({ queryKey: ["business-lists"] });
+      queryClient.invalidateQueries({ queryKey: ["business"] });
     },
   });
 };

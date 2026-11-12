@@ -15,8 +15,6 @@ import {
   FiTrash2,
   FiX,
   FiSave,
-  FiUploadCloud,
-  FiFileText,
 } from "react-icons/fi";
 import { MdBusiness } from "react-icons/md";
 import { toast } from "react-hot-toast";
@@ -24,7 +22,6 @@ import DeleteModal from "../../components/DeleteModal";
 import {
   useBusinessLists,
   useCreateBusinessList,
-  useCreateBusinessListsBulk,
   useUpdateBusinessList,
   useDeleteBusinessList,
 } from "../../service/hooks/useBusinessList";
@@ -57,7 +54,6 @@ const BusinessLists = () => {
   } = useBusinessLists();
 
   const createMutation = useCreateBusinessList();
-  const bulkMutation = useCreateBusinessListsBulk();
   const updateMutation = useUpdateBusinessList();
   const deleteMutation = useDeleteBusinessList();
 
@@ -69,15 +65,12 @@ const BusinessLists = () => {
   const [deleteTarget, setDeleteTarget] = useState<BusinessList | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
-  const [createMode, setCreateMode] = useState<"single" | "bulk">("single");
   const [createForm, setCreateForm] =
     useState<CreateBusinessListDto>(emptyForm);
-  const [bulkText, setBulkText] = useState("");
-  const [bulkFileName, setBulkFileName] = useState("");
 
   const isSaving = updateMutation.isPending;
   const isDeleting = deleteMutation.isPending;
-  const isCreating = createMutation.isPending || bulkMutation.isPending;
+  const isCreating = createMutation.isPending;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -144,9 +137,6 @@ const BusinessLists = () => {
 
   const resetCreate = () => {
     setCreateForm(emptyForm);
-    setBulkText("");
-    setBulkFileName("");
-    setCreateMode("single");
   };
 
   const closeCreate = () => {
@@ -191,84 +181,6 @@ const BusinessLists = () => {
       },
     );
   };
-
-  const parseBulkInput = (raw: string): CreateBusinessListDto[] => {
-    const trimmed = raw.trim();
-    if (!trimmed) return [];
-
-    if (trimmed.startsWith("[")) {
-      try {
-        const arr = JSON.parse(trimmed);
-        if (Array.isArray(arr)) {
-          return arr
-            .map((row) => ({
-              title: String(row.title ?? "").trim(),
-              category: String(row.category ?? "").trim(),
-              location: String(row.location ?? "").trim(),
-              keyword: String(row.keyword ?? "").trim(),
-              description: String(row.description ?? "").trim(),
-            }))
-            .filter((r) => r.title && r.category && r.location && r.keyword);
-        }
-      } catch {
-        /* fall through to CSV */
-      }
-    }
-
-    const lines = trimmed.split(/\r?\n/).filter((l) => l.trim());
-    const rows: CreateBusinessListDto[] = [];
-    lines.forEach((line, idx) => {
-      if (idx === 0 && /title/i.test(line)) return;
-      const cols = line.split(",").map((c) => c.trim());
-      const [title, category, location, keyword, description = ""] = cols;
-      if (title && category && location && keyword) {
-        rows.push({ title, category, location, keyword, description });
-      }
-    });
-    return rows;
-  };
-
-  const handleBulkFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBulkFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = String(reader.result || "");
-      setBulkText(text);
-      const parsed = parseBulkInput(text);
-      if (parsed.length === 0) {
-        toast.error("No valid rows found in file");
-      } else {
-        toast.success(`${parsed.length} rows detected`);
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleBulkSubmit = () => {
-    const rows = parseBulkInput(bulkText);
-    if (rows.length === 0) {
-      toast.error("Please add at least one valid row");
-      return;
-    }
-    bulkMutation.mutate(
-      { lists: rows },
-      {
-        onSuccess: () => {
-          toast.success(`${rows.length} lists created!`);
-          setShowCreate(false);
-          resetCreate();
-        },
-        onError: () => toast.error("Failed to create lists"),
-      },
-    );
-  };
-
-  const bulkPreviewCount = useMemo(
-    () => parseBulkInput(bulkText).length,
-    [bulkText],
-  );
 
   if (isLoading) {
     return (
@@ -471,7 +383,7 @@ const BusinessLists = () => {
                     New Business List
                   </h3>
                   <p className="text-xs text-gray-500">
-                    Add a single list or bulk import
+                    Create a list to group your leads
                   </p>
                 </div>
               </div>
@@ -486,136 +398,57 @@ const BusinessLists = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-xl mb-4">
-              <button
-                type="button"
-                onClick={() => setCreateMode("single")}
-                className={`py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                  createMode === "single"
-                    ? "bg-white text-blue-600 shadow-sm"
-                    : "text-gray-600 hover:text-gray-800"
-                }`}
-              >
-                <FiFileText size={15} />
-                Single
-              </button>
-              <button
-                type="button"
-                onClick={() => setCreateMode("bulk")}
-                className={`py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                  createMode === "bulk"
-                    ? "bg-white text-blue-600 shadow-sm"
-                    : "text-gray-600 hover:text-gray-800"
-                }`}
-              >
-                <FiUploadCloud size={15} />
-                Bulk
-              </button>
-            </div>
-
-            {createMode === "single" ? (
-              <div className="space-y-3">
+            <div className="space-y-3">
+              <CreateField
+                label="Title"
+                required
+                value={createForm.title}
+                onChange={(v) => setCreateForm((p) => ({ ...p, title: v }))}
+                placeholder="e.g. Cafe Restaurants in NYC"
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <CreateField
-                  label="Title"
+                  label="Category"
                   required
-                  value={createForm.title}
-                  onChange={(v) => setCreateForm((p) => ({ ...p, title: v }))}
-                  placeholder="e.g. Cafe Restaurants in NYC"
-                />
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <CreateField
-                    label="Category"
-                    required
-                    value={createForm.category}
-                    onChange={(v) =>
-                      setCreateForm((p) => ({ ...p, category: v }))
-                    }
-                    placeholder="e.g. Restaurant"
-                  />
-                  <CreateField
-                    label="Keyword"
-                    required
-                    value={createForm.keyword}
-                    onChange={(v) =>
-                      setCreateForm((p) => ({ ...p, keyword: v }))
-                    }
-                    placeholder="e.g. pizza"
-                  />
-                </div>
-                <CreateField
-                  label="Location"
-                  required
-                  value={createForm.location}
+                  value={createForm.category}
                   onChange={(v) =>
-                    setCreateForm((p) => ({ ...p, location: v }))
+                    setCreateForm((p) => ({ ...p, category: v }))
                   }
-                  placeholder="e.g. New York, USA"
+                  placeholder="e.g. Restaurant"
                 />
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={createForm.description || ""}
-                    onChange={(e) =>
-                      setCreateForm((p) => ({
-                        ...p,
-                        description: e.target.value,
-                      }))
-                    }
-                    rows={3}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                    placeholder="Optional description..."
-                  />
-                </div>
+                <CreateField
+                  label="Keyword"
+                  required
+                  value={createForm.keyword}
+                  onChange={(v) => setCreateForm((p) => ({ ...p, keyword: v }))}
+                  placeholder="e.g. pizza"
+                />
               </div>
-            ) : (
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Upload CSV / JSON file
-                  </label>
-                  <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all">
-                    <FiUploadCloud size={26} className="text-blue-600 mb-1.5" />
-                    <span className="text-sm font-medium text-gray-700">
-                      {bulkFileName || "Click to upload"}
-                    </span>
-                    <span className="text-xs text-gray-400 mt-0.5">
-                      .csv or .json
-                    </span>
-                    <input
-                      type="file"
-                      accept=".csv,.json,application/json,text/csv"
-                      onChange={handleBulkFile}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Or paste rows (CSV: title,category,location,keyword)
-                  </label>
-                  <textarea
-                    value={bulkText}
-                    onChange={(e) => setBulkText(e.target.value)}
-                    rows={6}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none font-mono text-xs"
-                    placeholder={`title,category,location,keyword\nCafe NYC,Restaurant,New York,pizza\nSushi LA,Sushi,Los Angeles,sushi`}
-                  />
-                </div>
-
-                {bulkPreviewCount > 0 && (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-100">
-                    <FiUsers size={14} className="text-emerald-600" />
-                    <span className="text-sm font-medium text-emerald-700">
-                      {bulkPreviewCount} valid row
-                      {bulkPreviewCount === 1 ? "" : "s"} detected
-                    </span>
-                  </div>
-                )}
+              <CreateField
+                label="Location"
+                required
+                value={createForm.location}
+                onChange={(v) => setCreateForm((p) => ({ ...p, location: v }))}
+                placeholder="e.g. New York, USA"
+              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={createForm.description || ""}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({
+                      ...p,
+                      description: e.target.value,
+                    }))
+                  }
+                  rows={3}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl outline-none transition-all text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  placeholder="Optional description..."
+                />
               </div>
-            )}
+            </div>
 
             <div className="flex justify-end gap-3 mt-5">
               <button
@@ -628,11 +461,7 @@ const BusinessLists = () => {
               </button>
               <button
                 type="button"
-                onClick={
-                  createMode === "single"
-                    ? handleCreateSingle
-                    : handleBulkSubmit
-                }
+                onClick={handleCreateSingle}
                 disabled={isCreating}
                 className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium text-sm hover:from-blue-700 hover:to-blue-800 transition-all shadow-md shadow-blue-500/30 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -641,11 +470,7 @@ const BusinessLists = () => {
                 ) : (
                   <FiSave size={15} />
                 )}
-                {isCreating
-                  ? "Creating..."
-                  : createMode === "single"
-                    ? "Create List"
-                    : `Bulk Create (${bulkPreviewCount})`}
+                {isCreating ? "Creating..." : "Create List"}
               </button>
             </div>
           </div>
